@@ -1,0 +1,53 @@
+#!/bin/bash
+# Cron jobs for Drupal 7.x Sites
+#
+export TERM="vt100"
+
+# Base directory for virtual hosts
+VHOSTDIR='/var/www/vhosts'
+
+for D in $(find ${VHOSTDIR} -maxdepth 4 -type d -name public_html); do
+        # Change to site directory
+        cd ${D}
+
+	# get the current sites user
+	USER="$(stat -c %U ${D})"
+
+	# Simple check for a sites directory (all D7 sites should have this)
+	if [ -d "sites" ]; then
+		# Check for multisite
+		MULTISITE=$(find sites -maxdepth 1 -type d -a ! -name default -a ! -name sites -a ! -name all)
+
+		# if MULTISITE is not empty, then process each site individually, else process the main site
+		if [ ! -z "${MULTISITE// }" ]; then
+			# Loop through the individual sites
+			for M in ${MULTISITE}; do
+				# strip off the "sites/" portion of the name
+				M=${M#sites/}
+
+				# Say what we are doing for debug purposes
+				#echo "Running with \`drush -l http://www.${M}\` in ${D}"
+
+				# make sure we have a settings.php for the URI
+				if [ -e "sites/${M}/settings.php" ]; then
+					# run the site drush cron using the site URI
+					sudo -u ${USER} /usr/local/bin/drush -l http://www.${M} vset cron_safe_threshold 0 >/dev/null 2>&1
+					sudo -u ${USER} /usr/local/bin/drush -l http://www.${M} cron >/dev/null 2>&1
+				fi
+			done
+		else
+			# Simple check to see if this is a drupal site, this is pretty standard
+			# for drupal, although other CMS's or site code could fit, drush will
+			# just throw an error, and it doesn't affect anything, just trying to
+			# minimize useless process cycles being burned up.
+			if [ -e sites/default/settings.php ]; then
+				# Say what we are doing for debug purposes
+				#echo "Running \`drush cron\` in ${D}"
+
+				# Run site cron as site owner
+				sudo -u ${USER} /usr/local/bin/drush vset cron_safe_threshold 0 >/dev/null 2>&1
+				sudo -u ${USER} /usr/local/bin/drush cron >/dev/null 2>&1
+			fi
+		fi
+	fi
+done
